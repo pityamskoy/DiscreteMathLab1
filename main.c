@@ -43,10 +43,12 @@ int inputBigint(Bigint* number) {
         return 1;
     }
 
-    realloc(number->numbers, sizeof(unsigned int) * (k + 1));
-    if (number->numbers == NULL) {
+    unsigned int* tmp = realloc(number->numbers, sizeof(unsigned int) * (k + 1));
+    if (tmp == NULL) {
         return 1;
     }
+
+    number->numbers = tmp;
     number->numbers[0] = k;
 
     int firstNumber;
@@ -72,6 +74,8 @@ int inputBigint(Bigint* number) {
     return 0;
 }
 
+Bigint* substraction(Bigint* a, Bigint* b);
+
 Bigint* summation(Bigint* a, Bigint* b) {
     if (a == nullptr || b == nullptr) {
         return nullptr;
@@ -81,23 +85,45 @@ Bigint* summation(Bigint* a, Bigint* b) {
         return nullptr;
     }
 
-    unsigned long long max = (a->numbers[0] > b->numbers[0]) ? a->numbers[0]: b->numbers[0];
-    if (a->numbers[0] <= max) {
-        unsigned int *tmp = realloc(a->numbers, sizeof(unsigned int) * (max + 2));
-
-        if (tmp == NULL) {
-            return nullptr;
-        }
-        a->numbers = tmp;
+    if ((a->firstDigit >= 0 && b->firstDigit < 0) || (a->firstDigit < 0 && b->firstDigit >= 0)) {
+        return substraction(a, b);
     }
 
-    unsigned long long perenos = 0;
+    unsigned int max;
+    if (a->numbers[0] >= b->numbers[0]) {
+        max = a->numbers[0];
+    } else {
+        max = b->numbers[0];
+    }
+
+    unsigned int *tmp1 = realloc(a->numbers, sizeof(unsigned int) * (max + 4));
+
+    if (tmp1 == NULL) {
+        return nullptr;
+    }
+    a->numbers = tmp1;
+    a->numbers[0]++;
+    a->numbers[a->numbers[0]] = a->firstDigit;
+    a->firstDigit = 0;
+
+    unsigned int *tmp2 = realloc(b->numbers, sizeof(unsigned int) * (max + 4));
+
+    if (tmp2 == NULL) {
+        return nullptr;
+    }
+
+    b->numbers = tmp2;
+    b->numbers[0]++;
+    b->numbers[b->numbers[0]] = b->firstDigit;
+    b->firstDigit = 0;
+
+    unsigned int perenos = 0;
     for (unsigned int i = 1; i <= max; i++) {
-        unsigned long long digit1 = (i <= a->numbers[0] - 1) ? a->numbers[i] : 0;
-        unsigned long long digit2 = (i <= b->numbers[0] - 1) ? b->numbers[i] : 0;
+        unsigned int digit1 = a->numbers[i];
+        unsigned int digit2 = b->numbers[i];
 
         digit1 = digit1 + digit2 + perenos;
-        a->numbers[i] = (unsigned int) digit1 % BASE;
+        a->numbers[i] = digit1 % BASE;
 
         if (digit1 >= BASE) {
             perenos = digit1 / BASE;
@@ -107,22 +133,14 @@ Bigint* summation(Bigint* a, Bigint* b) {
     }
 
     if (perenos > 0) {
-        a->numbers[max + 1] = (unsigned int) perenos;
-        a->numbers[0] = max + 1;
+        a->numbers[max + 1] = perenos;
+        a->numbers[0]++;
     } else {
         a->numbers[0] = max;
     }
 
-    int check = 0;
-    long long result = a->firstDigit + b->firstDigit;
-    if (result >= BASE || result <= (-1*BASE)) {
-        check = (int) result / BASE;
-        a->numbers[0] = max + 1;
-        a->numbers[a->numbers[0]] = (unsigned int) result % BASE;
-        a->firstDigit = check;
-    } else {
-        a->firstDigit = (int) result;
-    }
+    a->firstDigit = (int) a->numbers[a->numbers[0]];
+    a->numbers[a->numbers[0]] = 0;
 
     return a;
 }
@@ -450,7 +468,7 @@ void increment(Bigint* n) {
     }
 }
 
-Bigint* saveCopy(Bigint* n) {
+Bigint* deepCopy(Bigint* n) {
     if (n == nullptr) {
         return nullptr;
     }
@@ -481,7 +499,7 @@ Bigint* factorial(Bigint* n) {
     i->numbers = calloc(1, sizeof(unsigned int));
     i->numbers[0] = 1;
 
-    Bigint* result = saveCopy(i);
+    Bigint* result = deepCopy(i);
     if (result == nullptr) {
         return nullptr;
     }
@@ -516,7 +534,7 @@ Bigint* af(Bigint* n) {
     result->numbers[0] = 1;
 
     for (;i->numbers[0] < n->numbers[0] && i->firstDigit < n->firstDigit; increment(i)) {
-        Bigint* diff = saveCopy(n);
+        Bigint* diff = deepCopy(n);
         if (diff == nullptr) {
             return nullptr;
         }
@@ -568,13 +586,14 @@ Bigint* toBase(unsigned int n) {
     new->numbers[0] = 0;
 
     unsigned int i = 1;
-    while (n > 0) {
+    while (n / BASE > 0) {
         new->numbers[0]++;
         new->numbers[i] = n / BASE;
         i++;
         n = n / BASE;
     }
 
+    new->numbers[i] = n % BASE;
     new->firstDigit = new->numbers[new->numbers[0]];
     new->numbers[new->numbers[0]] = 0;
 
@@ -610,6 +629,46 @@ Bigint* positiveDegree(Bigint* number, Bigint* degree) {
     return number;
 }
 
+/**
+ * Difficulty of algorithm is O(n^3).
+ * Илья Сергеевич, не бейте сильно :D
+ */
+Bigint* mod(Bigint* a, Bigint*b) {
+    if (a == nullptr || b == nullptr) {
+        return nullptr;
+    }
+
+    Bigint* iter1 = deepCopy(b);
+    Bigint* iter2 = deepCopy(b);
+    Bigint* iter3 = deepCopy(b);
+    Bigint* one = init();
+    if (one == nullptr || iter1 == nullptr) {
+        delete(one);
+        delete(iter1);
+        delete(iter2);
+        delete(iter3);
+        return nullptr;
+    }
+
+    one->firstDigit = 1;
+    realloc(one->numbers, sizeof(unsigned int));
+    one->numbers[0] = 1;
+
+    while (a->numbers[0] >= multiply(iter1, iter1)->numbers[0] && a->firstDigit > multiply(iter2, iter2)->firstDigit) {
+        if (iter1 == nullptr || iter2 == nullptr) {
+            return nullptr;
+        }
+
+        multiply(iter3, iter3);
+    }
+
+    delete(one);
+    delete(iter1);
+    delete(iter2);
+    delete(iter3);
+    return substraction(a, iter3);
+}
+
 Bigint* count(Bigint* n) {
     if (n == nullptr) {
         return nullptr;
@@ -617,12 +676,36 @@ Bigint* count(Bigint* n) {
 
     Bigint* number = toBase(115249);
     Bigint* degree = toBase(4183);
+    Bigint* two = toBase(2);
 
-    if (number == nullptr || degree == nullptr) {
+    if (number == nullptr || degree == nullptr || two == nullptr) {
         return nullptr;
     }
 
+    positiveDegree(number, degree);
+    if (number == nullptr) {
+        return nullptr;
+    }
 
+    positiveDegree(two, n);
+    if (two == nullptr) {
+        return nullptr;
+    }
+
+    return mod(number, two);
+}
+
+void printBigint(Bigint* n) {
+    if (n == nullptr) {
+        return;
+    }
+
+    printf("Printing Bigint number in Little Endian (LE) format...\n");
+    for (unsigned int i = 1; i < n->numbers[0]; i++) {
+        printf("%u", n->numbers[i]);
+    }
+
+    printf("%d", n->firstDigit);
 }
 
 int main(void) {
