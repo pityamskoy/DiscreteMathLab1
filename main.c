@@ -549,14 +549,80 @@ Bigint* af(Bigint* n) {
     return result;
 }
 
-Bigint* toBase(unsigned int n) {
-    while (n > 0) {
-
+unsigned int countNumberOfDigits(unsigned int result, unsigned int n) {
+    if (n/10 > 0) {
+        result++;
+        countNumberOfDigits(result, n/10);
     }
+
+    return result;
+}
+
+Bigint* toBase(unsigned int n) {
+    Bigint* new = init();
+    if (new == nullptr) {
+        return nullptr;
+    }
+
+    new->numbers = calloc(countNumberOfDigits(1, n) + 2, sizeof(unsigned int) * 1);
+    new->numbers[0] = 0;
+
+    unsigned int i = 1;
+    while (n > 0) {
+        new->numbers[0]++;
+        new->numbers[i] = n / BASE;
+        i++;
+        n = n / BASE;
+    }
+
+    new->firstDigit = new->numbers[new->numbers[0]];
+    new->numbers[new->numbers[0]] = 0;
+
+    return new;
+}
+
+Bigint* positiveDegree(Bigint* number, Bigint* degree) {
+    if (number == nullptr || degree == nullptr) {
+        return nullptr;
+    }
+
+    Bigint* one = init();
+    if (one == nullptr) {
+        return nullptr;
+    }
+
+    one->firstDigit = 1;
+    realloc(one->numbers, sizeof(unsigned int));
+    one->numbers[0] = 1;
+
+    while (degree->numbers[0] > 1 && degree->firstDigit > 0) {
+        multiply(number, number);
+        if (number == nullptr) {
+            return nullptr;
+        }
+
+        substraction(degree, one);
+        if (degree == nullptr) {
+            return nullptr;
+        }
+    }
+
+    return number;
 }
 
 Bigint* count(Bigint* n) {
-    //
+    if (n == nullptr) {
+        return nullptr;
+    }
+
+    Bigint* number = toBase(115249);
+    Bigint* degree = toBase(4183);
+
+    if (number == nullptr || degree == nullptr) {
+        return nullptr;
+    }
+
+
 }
 
 int main(void) {
