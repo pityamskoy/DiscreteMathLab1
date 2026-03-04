@@ -470,11 +470,29 @@ Bigint* saveCopy(Bigint* n) {
     return new;
 }
 
-/*
+
 Bigint* factorial(Bigint* n) {
-    while (saveCopy(n))
+    Bigint* i = init();
+    if (i == nullptr) {
+        return nullptr;
+    }
+
+    i->firstDigit = 1;
+    i->numbers = calloc(1, sizeof(unsigned int));
+    i->numbers[0] = 1;
+
+    Bigint* result = saveCopy(i);
+    if (result == nullptr) {
+        return nullptr;
+    }
+
+    for (; result->numbers[0] < n->numbers[0] && result->firstDigit < n->firstDigit; increment(i)) {
+        result = multiply(result, i);
+    }
+
+    return result;
 }
-*/
+
 Bigint* af(Bigint* n) {
     if (n == nullptr) {
         return nullptr;
@@ -492,23 +510,53 @@ Bigint* af(Bigint* n) {
     }
     i->numbers[0] = 1;
 
-    Bigint* minus1 = init();
-    if (minus1 == nullptr) {
-        return nullptr;
-    }
-
-    minus1->firstDigit = -1;
-    minus1->numbers = calloc(1, sizeof(unsigned int));
-    if (i->numbers == NULL) {
-        return nullptr;
-    }
-    minus1->numbers[0] = 1;
+    Bigint* result = init();
+    result->numbers = calloc(n->numbers[0], sizeof(unsigned int));
+    result->firstDigit = 0;
+    result->numbers[0] = 1;
 
     for (;i->numbers[0] < n->numbers[0] && i->firstDigit < n->firstDigit; increment(i)) {
         Bigint* diff = saveCopy(n);
+        if (diff == nullptr) {
+            return nullptr;
+        }
+
         diff = substraction(diff, i);
+        int sign;
+        if (diff->numbers[0] == 1) {
+            if (diff->firstDigit % 2 == 0) {
+                sign = 1;
+            } else {
+                sign = -1;
+            }
+        } else {
+            if (diff->numbers[diff->numbers[0] - 1] % 2 == 0) {
+                sign = 1;
+            } else {
+                sign = -1;
+            }
+        }
+
+        Bigint* nFactorial = factorial(n);
+        if (nFactorial == nullptr) {
+            return nullptr;
+        }
+        nFactorial->firstDigit = nFactorial->firstDigit*sign;
+
+        result = summation(result, nFactorial);
+    }
+
+    return result;
+}
+
+Bigint* toBase(unsigned int n) {
+    while (n > 0) {
 
     }
+}
+
+Bigint* count(Bigint* n) {
+    //
 }
 
 int main(void) {
