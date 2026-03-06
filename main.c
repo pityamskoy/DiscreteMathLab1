@@ -105,10 +105,9 @@ int prepare(Bigint* a, Bigint* b, unsigned int* maximum) {
     if (tmp1 == NULL) {
         return 1;
     }
+
     a->numbers = tmp1;
-    a->numbers[0]++;
     a->numbers[a->numbers[0]] = a->firstDigit;
-    a->firstDigit = 0;
 
     unsigned int *tmp2 = realloc(b->numbers, sizeof(unsigned int) * (2 * max + 4));
 
@@ -117,9 +116,7 @@ int prepare(Bigint* a, Bigint* b, unsigned int* maximum) {
     }
 
     b->numbers = tmp2;
-    b->numbers[0]++;
     b->numbers[b->numbers[0]] = b->firstDigit;
-    b->firstDigit = 0;
 
     for (unsigned int i = a->numbers[0] + 1; i <= 2 * max + 2; i++) {
         a->numbers[i] = 0;
@@ -129,11 +126,15 @@ int prepare(Bigint* a, Bigint* b, unsigned int* maximum) {
         b->numbers[i] = 0;
     }
 
+    a->numbers[0] = max;
+    b->numbers[0] = max;
+
     *maximum = max;
     return 0;
 }
 
 Bigint* substraction(Bigint* a, Bigint* b);
+Bigint* deepCopy(Bigint* n);
 
 /**
  * Summation of two Bigint numbers.
@@ -156,12 +157,14 @@ Bigint* summation(Bigint* a, Bigint* b) {
         a->firstDigit = a->firstDigit * (-1);
         b->firstDigit = b->firstDigit * (-1);
 
-        a = summation(a, b);
-        if (a == nullptr) {
+        Bigint* newA = summation(deepCopy(a), b);
+        if (newA == nullptr) {
             return nullptr;
         }
 
         a->firstDigit = a->firstDigit * (-1);
+        free(a->numbers);
+        a->numbers = newA->numbers;
         return a;
     }
 
@@ -239,18 +242,15 @@ Bigint* substraction(Bigint* a, Bigint* b) {
         return nullptr;
     }
 
-    unsigned int borrow = 0;
-    int sign = 1;
+    long long borrow = 0;
 
     for (unsigned int i = 1; i <= max; i++) {
-        int digit1 = (int) a->numbers[i];
-        int digit2 = (int) b->numbers[i];
+        long long digit1 = (long long) a->numbers[i];
+        long long digit2 = (long long) b->numbers[i];
 
         long long diff = digit1 - digit2 - borrow;
 
-        if (diff < 0 && i == max) {
-            sign = -1;
-        } else if (diff < 0) {
+        if (diff < 0 && i != max) {
             diff += BASE;
             borrow = 1;
         } else {
@@ -264,9 +264,8 @@ Bigint* substraction(Bigint* a, Bigint* b) {
         max--;
     }
 
-    a->firstDigit = ((int) a->numbers[max]) * sign;
+    a->firstDigit = (int) a->numbers[max];
     a->numbers[max] = 0;
-    a->numbers[0] = max - 1;
 
     return a;
 }
@@ -367,43 +366,58 @@ Bigint* multiply(Bigint* a, Bigint* b) {
 
     res[0] = max;
     unsigned int countRealQuantityOfDigits = 0;
-    unsigned int perenos = 0;
 
-    for (unsigned int i = 1; i <= max; i++) {
-        unsigned int ai = a->numbers[i];
+    for (unsigned int j = 1; j <= max; j++) {
+        unsigned int bj = b->numbers[j];
         unsigned int subCount = 0;
+        unsigned int perenos = 0;
 
-        for (unsigned int j = 1; j <= max; j++) {
-            unsigned int bj = b->numbers[j];
+        for (unsigned int i = 1; i <= max; i++) {
+            unsigned int ai = a->numbers[i];
 
             /**
              * We assume that overflowing always doesn't happen due to number system (BASE = 2^12).
              */
 
             unsigned int mult = ai * bj + perenos;
-            unsigned int k = i + j - 1;
+            unsigned int k = i + j - 1; // shift to the left in BE multiplication
+            perenos = 0;
 
             res[k] += mult % BASE;
             if (res[k] >= BASE) {
-                perenos = res[k] / BASE;
                 res[k] = res[k] % BASE;
+                perenos += res[k] / BASE;
             }
 
+            perenos += mult / BASE;
             subCount++;
         }
 
         unsigned int count = 1;
         while (perenos != 0) {
-            res[subCount + count] = perenos;
-            count++;
+            res[subCount + count] += perenos;
 
             if (res[subCount + count] >= BASE) {
                 perenos = res[subCount + count] / BASE;
                 res[subCount + count] = res[subCount + count] % BASE;
+            } else {
+                perenos = 0;
+
+                if (countRealQuantityOfDigits < subCount + count) {
+                    countRealQuantityOfDigits = subCount + count;
+                } else {
+                    countRealQuantityOfDigits = countRealQuantityOfDigits;
+                }
             }
+
+            count++;
         }
 
-        countRealQuantityOfDigits++;
+        if (countRealQuantityOfDigits < subCount) {
+            countRealQuantityOfDigits = subCount;
+        } else {
+            countRealQuantityOfDigits = countRealQuantityOfDigits;
+        }
     }
 
     free(a->numbers);
@@ -416,9 +430,8 @@ Bigint* multiply(Bigint* a, Bigint* b) {
         }
     }
 
+    a->numbers[0] = countRealQuantityOfDigits;
     a->firstDigit = (int) a->numbers[a->numbers[0]];
-    a->numbers[a->numbers[0]] = 0;
-    a->numbers[0]--;
 
     if (sign < 0) {
         a->firstDigit = a->firstDigit * (-1);
@@ -444,8 +457,17 @@ void splitOnHalf(Bigint* x, Bigint* highNumber, Bigint* smallNumber) {
         return;
     }
 
-    realloc(highNumber->numbers, sizeof(unsigned int)*(n/2) + 2);
-    realloc(smallNumber->numbers, sizeof(unsigned int)*(n/2) + 2);
+    unsigned int* tmp1 = realloc(highNumber->numbers, sizeof(unsigned int) * (n / 2) + 2);
+    unsigned int* tmp2 = realloc(smallNumber->numbers, sizeof(unsigned int) * (n / 2) + 2);
+
+    if (tmp1 == nullptr || tmp2 == nullptr) {
+        return;
+    }
+
+    highNumber->numbers = tmp1;
+    highNumber->numbers[0] = 0;
+    smallNumber->numbers = tmp2;
+    smallNumber->numbers[0] = 0;
 
     /**
      * Due to Little Endian (LE) the first n/2 numbers are smallest digits in a bigint,
@@ -453,7 +475,7 @@ void splitOnHalf(Bigint* x, Bigint* highNumber, Bigint* smallNumber) {
      */
 
     unsigned int l = 1, h = 1;
-    for (unsigned int i = 1; i < n; i++) {
+    for (unsigned int i = 1; i <= n; i++) {
         if (i < n/2) {
             smallNumber->numbers[0]++;
             smallNumber->numbers[l] = x->numbers[i];
@@ -467,6 +489,7 @@ void splitOnHalf(Bigint* x, Bigint* highNumber, Bigint* smallNumber) {
             h++;
         } else if (i == n) {
             highNumber->firstDigit = x->firstDigit;
+            highNumber->numbers[0]++;
         }
     }
 }
@@ -537,17 +560,9 @@ Bigint* karatsuba(Bigint* a, Bigint* b) {
     result->numbers = nullptr;
 
     delete(result);
-    delete(aHigh);
-    delete(aLow);
     delete(bHigh);
     delete(bLow);
     delete(s1);
-    delete(s2);
-    delete(res1);
-    delete(res2);
-    delete(res3);
-    delete(tmpRes1);
-    delete(tmpRes2);
 
     return a;
 }
@@ -860,9 +875,6 @@ int main(void) {
         return 1;
     }
 
-    a->firstDigit = -120;
-    b->firstDigit = 13;
-
     realloc(a->numbers, sizeof(unsigned int) * 4);
     realloc(b->numbers, sizeof(unsigned int) * 3);
 
@@ -870,12 +882,49 @@ int main(void) {
     a->numbers[1] = 1293;
     a->numbers[2] = 3405;
     a->numbers[3] = 10;
+    a->firstDigit = 120;
 
     b->numbers[0] = 3;
     b->numbers[1] = 100;
     b->numbers[2] = 4000;
+    b->firstDigit = 13;
 
-    printBigint(summation(deepCopy(a), deepCopy(b)));
+    Bigint* aCopy = deepCopy(a);
+    Bigint* mySubstraction = substraction(deepCopy(b), aCopy);
+    printBigint(mySubstraction); // true
+    delete(aCopy);
+    delete(mySubstraction);
+
+    Bigint* bCopy = deepCopy(b);
+    Bigint* mySummation = summation(deepCopy(a), bCopy);
+    printBigint(mySummation); // true
+    delete(bCopy);
+    delete(mySummation);
+
+    /**
+     * For checking multiplication and Karatsuba algorithm more trivial values have been set.
+     */
+
+    a->firstDigit = 4000;
+    a->numbers[0] = 2;
+    a->numbers[1] = 10;
+
+    b->firstDigit = 3000;
+    b->numbers[0] = 2;
+    b->numbers[1] = 20;
+
+    Bigint* bCopy1 = deepCopy(b);
+    Bigint* myMultiplication = multiply(deepCopy(a), bCopy1);
+    printBigint(myMultiplication); // true
+    delete(myMultiplication);
+
+    Bigint* myKaratsuba = karatsuba(deepCopy(a), bCopy1);
+    printBigint(myKaratsuba);
+    delete(bCopy1);
+    delete(myKaratsuba);
+
+    delete(a);
+    delete(b);
 
     return 0;
 }
