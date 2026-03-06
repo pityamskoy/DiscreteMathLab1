@@ -457,8 +457,8 @@ void splitOnHalf(Bigint* x, Bigint* highNumber, Bigint* smallNumber) {
         return;
     }
 
-    unsigned int* tmp1 = realloc(highNumber->numbers, sizeof(unsigned int) * (n / 2) + 2);
-    unsigned int* tmp2 = realloc(smallNumber->numbers, sizeof(unsigned int) * (n / 2) + 2);
+    unsigned int* tmp1 = realloc(highNumber->numbers, sizeof(unsigned int) * (n / 2 + 2));
+    unsigned int* tmp2 = realloc(smallNumber->numbers, sizeof(unsigned int) * (n / 2 + 2));
 
     if (tmp1 == nullptr || tmp2 == nullptr) {
         return;
@@ -544,27 +544,49 @@ Bigint* karatsuba(Bigint* a, Bigint* b) {
     splitOnHalf(a, aHigh, aLow);
     splitOnHalf(b, bHigh, bLow);
 
-    Bigint* s1 = summation(deepCopy(aHigh), aLow);
-    Bigint* s2 = summation(deepCopy(bHigh), bLow);
+    Bigint* aLowCopy = deepCopy(aLow);
+    Bigint* bLowCopy1 = deepCopy(bLow);
 
-    Bigint* res1 = multiply(deepCopy(aLow), bLow);
-    Bigint* tmpRes1 = multiply(deepCopy(s1), s2);
-    Bigint* res3 = multiply(deepCopy(aHigh), bHigh);
+    Bigint* s1 = summation(deepCopy(aHigh), aLowCopy);
+    Bigint* s2 = summation(deepCopy(bHigh), bLowCopy1);
 
-    Bigint* tmpRes2 = substraction(deepCopy(tmpRes1), res3);
-    Bigint* res2 = substraction(deepCopy(tmpRes2), res1);
+    Bigint* bLowCopy2 = deepCopy(bLow);
+    Bigint* s2Copy = deepCopy(s2);
+    Bigint* bHighCopy = deepCopy(bHigh);
+
+    Bigint* res1 = multiply(deepCopy(aLow), bLowCopy2);
+    Bigint* tmpRes1 = multiply(deepCopy(s1), s2Copy);
+    Bigint* res3 = multiply(deepCopy(aHigh), bHighCopy);
+
+    Bigint* res3Copy = deepCopy(res3);
+    Bigint* res1Copy1 = deepCopy(res1);
+
+    Bigint* tmpRes2 = substraction(deepCopy(tmpRes1), res3Copy);
+    Bigint* res2 = substraction(deepCopy(tmpRes2), res1Copy1);
 
     res3 = shiftRight(res3, 2 * (n / 2));
     res2 = shiftRight(res2, n / 2);
 
-    Bigint* result = summation(deepCopy(res3), res2);
-    result = summation(result, res1);
+    Bigint* res2Copy = deepCopy(res2);
+    Bigint* res1Copy2 = deepCopy(res1);
+
+    Bigint* result = summation(deepCopy(res3), res2Copy);
+    result = summation(result, res1Copy2);
 
     free(a->numbers);
     a->firstDigit = result->firstDigit;
     a->numbers = result->numbers;
     result->numbers = nullptr;
 
+    delete(aLowCopy);
+    delete(bLowCopy1);
+    delete(bLowCopy2);
+    delete(s2Copy);
+    delete(bHighCopy);
+    delete(res3Copy);
+    delete(res1Copy1);
+    delete(res1Copy2);
+    delete(res2Copy);
     delete(aHigh);
     delete(bHigh);
     delete(aLow);
@@ -629,7 +651,7 @@ Bigint* deepCopy(Bigint* n) {
     }
 
     new->firstDigit = n->firstDigit;
-    new->numbers = calloc(n->numbers[0], sizeof(unsigned int));
+    new->numbers = calloc(n->numbers[0] + 1, sizeof(unsigned int));
 
     for (unsigned int i = 0; i < n->numbers[0]; i++) {
         new->numbers[i] = n->numbers[i];
@@ -931,10 +953,12 @@ int main(void) {
     Bigint* myMultiplication = multiply(deepCopy(a), bCopy1);
     printBigint(myMultiplication); // true
     delete(myMultiplication);
-
-    Bigint* myKaratsuba = karatsuba(deepCopy(a), bCopy1);
-    printBigint(myKaratsuba);
     delete(bCopy1);
+
+    Bigint* bCopy2 = deepCopy(b);
+    Bigint* myKaratsuba = karatsuba(deepCopy(a), bCopy2);
+    printBigint(myKaratsuba);
+    delete(bCopy2);
     delete(myKaratsuba);
 
     delete(a);
