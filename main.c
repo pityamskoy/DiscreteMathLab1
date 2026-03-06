@@ -501,16 +501,22 @@ Bigint* shiftRight(Bigint* a, unsigned int m) {
     if (a == nullptr || m == 0)
         return a;
 
-    unsigned int oldCount = a->numbers[0];
-    realloc(a->numbers,sizeof(unsigned int) * (oldCount + m + 1));
+    unsigned int oldQuantity = a->numbers[0];
+    unsigned int* tmp = realloc(a->numbers,sizeof(unsigned int) * (oldQuantity + m + 1));
 
-    for (unsigned int i = oldCount; i >= 1; i--)
+    if (tmp == nullptr) {
+        return nullptr;
+    }
+
+    a->numbers = tmp;
+
+    for (unsigned int i = oldQuantity; i >= 1; i--)
         a->numbers[i + m] = a->numbers[i];
 
     for (unsigned int i = 1; i <= m; i++)
         a->numbers[i] = 0;
 
-    a->numbers[0] = oldCount + m;
+    a->numbers[0] = oldQuantity + m;
 
     return a;
 }
@@ -538,20 +544,20 @@ Bigint* karatsuba(Bigint* a, Bigint* b) {
     splitOnHalf(a, aHigh, aLow);
     splitOnHalf(b, bHigh, bLow);
 
-    Bigint* s1 = summation(aHigh, aLow);
-    Bigint* s2 = summation(bHigh, bLow);
+    Bigint* s1 = summation(deepCopy(aHigh), aLow);
+    Bigint* s2 = summation(deepCopy(bHigh), bLow);
 
-    Bigint* res1 = multiply(aLow, bLow);
-    Bigint* tmpRes1 = multiply(s1, s2);
-    Bigint* res3 = multiply(aHigh, bHigh);
+    Bigint* res1 = multiply(deepCopy(aLow), bLow);
+    Bigint* tmpRes1 = multiply(deepCopy(s1), s2);
+    Bigint* res3 = multiply(deepCopy(aHigh), bHigh);
 
-    Bigint* tmpRes2 = substraction(tmpRes1, res3);
-    Bigint* res2 = substraction(tmpRes2, res1);
+    Bigint* tmpRes2 = substraction(deepCopy(tmpRes1), res3);
+    Bigint* res2 = substraction(deepCopy(tmpRes2), res1);
 
     res3 = shiftRight(res3, 2 * (n / 2));
     res2 = shiftRight(res2, n / 2);
 
-    Bigint* result = summation(res3, res2);
+    Bigint* result = summation(deepCopy(res3), res2);
     result = summation(result, res1);
 
     free(a->numbers);
@@ -559,10 +565,18 @@ Bigint* karatsuba(Bigint* a, Bigint* b) {
     a->numbers = result->numbers;
     result->numbers = nullptr;
 
-    delete(result);
+    delete(aHigh);
     delete(bHigh);
+    delete(aLow);
     delete(bLow);
     delete(s1);
+    delete(s2);
+    delete(res1);
+    delete(tmpRes1);
+    delete(res3);
+    delete(tmpRes2);
+    delete(res2);
+    delete(result);
 
     return a;
 }
