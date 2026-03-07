@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define BASE (256 << sizeof(int))
 
@@ -162,9 +163,10 @@ Bigint* summation(Bigint* a, Bigint* b) {
             return nullptr;
         }
 
-        a->firstDigit = a->firstDigit * (-1);
+        a->firstDigit = newA->firstDigit * (-1);
         free(a->numbers);
         a->numbers = newA->numbers;
+
         return a;
     }
 
@@ -369,7 +371,6 @@ Bigint* multiply(Bigint* a, Bigint* b) {
 
     for (unsigned int j = 1; j <= max; j++) {
         unsigned int bj = b->numbers[j];
-        unsigned int subCount = 0;
         unsigned int perenos = 0;
 
         for (unsigned int i = 1; i <= max; i++) {
@@ -390,21 +391,21 @@ Bigint* multiply(Bigint* a, Bigint* b) {
             }
 
             perenos += mult / BASE;
-            subCount++;
         }
 
+        unsigned int lastK = max + j - 1;
         unsigned int count = 1;
         while (perenos != 0) {
-            res[subCount + count] += perenos;
+            res[lastK + count] += perenos;
 
-            if (res[subCount + count] >= BASE) {
-                perenos = res[subCount + count] / BASE;
-                res[subCount + count] = res[subCount + count] % BASE;
+            if (res[lastK + count] >= BASE) {
+                perenos = res[lastK + count] / BASE;
+                res[lastK + count] = res[lastK + count] % BASE;
             } else {
                 perenos = 0;
 
-                if (countRealQuantityOfDigits < subCount + count) {
-                    countRealQuantityOfDigits = subCount + count;
+                if (countRealQuantityOfDigits < lastK + count) {
+                    countRealQuantityOfDigits = lastK + count;
                 } else {
                     countRealQuantityOfDigits = countRealQuantityOfDigits;
                 }
@@ -413,8 +414,8 @@ Bigint* multiply(Bigint* a, Bigint* b) {
             count++;
         }
 
-        if (countRealQuantityOfDigits < subCount) {
-            countRealQuantityOfDigits = subCount;
+        if (countRealQuantityOfDigits < lastK) {
+            countRealQuantityOfDigits = lastK;
         } else {
             countRealQuantityOfDigits = countRealQuantityOfDigits;
         }
@@ -611,30 +612,38 @@ void increment(Bigint* n) {
         return;
     }
 
-    unsigned int count = 1;
-    for (unsigned int i = 1; i < n->numbers[0]; i++) {
-        if (n->numbers[i] == BASE - 1) {
-            count++;
-        } else {
-            break;
-        }
+    Bigint* i = init();
+    if (i == nullptr) {
+        return;
     }
 
-    if (count == n->numbers[0]) {
-        n->firstDigit++;
+    i->numbers = calloc(1, sizeof(unsigned int));
+    i->firstDigit= 1;
+    i->numbers[0] = 1;
 
-        if (n->firstDigit == BASE) {
-            realloc(n->numbers, sizeof(unsigned int) * (n->numbers[0] + 1));
-            n->numbers[0]++;
-            n->firstDigit = 1;
+    summation(n, i);
+    delete(i);
+}
 
-            for (unsigned i = 1; i < n->numbers[0]; i++) {
-                n->numbers[i] = 0;
-            }
-        }
-    } else {
-        n->numbers[count]++;
+/**
+ * It is the implementation of decrement function for Bigint numbers.
+ */
+void decrement(Bigint* n) {
+    if (n == nullptr) {
+        return;
     }
+
+    Bigint* i = init();
+    if (i == nullptr) {
+        return;
+    }
+
+    i->numbers = calloc(1, sizeof(unsigned int));
+    i->firstDigit= 1;
+    i->numbers[0] = 1;
+
+    substraction(n, i);
+    delete(i);
 }
 
 /**
@@ -663,9 +672,17 @@ Bigint* deepCopy(Bigint* n) {
 /**
  * Factorial function for Bigint numbers.
  */
-Bigint* factorial(Bigint* n) {
+Bigint* factorial(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* n) {
+    if (n == nullptr) {
+        return nullptr;
+    }
+
     Bigint* i = init();
     if (i == nullptr) {
+        return nullptr;
+    }
+
+    if (n->firstDigit < 0) {
         return nullptr;
     }
 
@@ -678,9 +695,11 @@ Bigint* factorial(Bigint* n) {
         return nullptr;
     }
 
-    for (; result->numbers[0] < n->numbers[0] && result->firstDigit < n->firstDigit; increment(i)) {
-        result = multiply(result, i);
+    for (; i->numbers[0] <= n->numbers[0] && i->firstDigit <= n->firstDigit; increment(i)) {
+        result = multiplication_algorithm(result, i);
     }
+
+    delete(i);
 
     return result;
 }
@@ -688,60 +707,40 @@ Bigint* factorial(Bigint* n) {
 /**
  * ТЗ номер 3 п.a
  */
-Bigint* af(Bigint* n) {
+Bigint* af(Bigint* multiplication_algorithm(Bigint* a, Bigint*b), Bigint* n) {
     if (n == nullptr) {
         return nullptr;
     }
 
-    Bigint* i = init();
-    if (i == nullptr) {
+    if (n->firstDigit <= 0) { // assume Bigint n is always natural.
         return nullptr;
     }
 
-    i->firstDigit = 1;
-    i->numbers = calloc(1, sizeof(unsigned int));
-    if (i->numbers == NULL) {
-        return nullptr;
+    long long check;
+    if (n->numbers[0] == 1) {
+        check = (long long) n->firstDigit;
+    } else {
+        check = (long long) n->numbers[1];
     }
-    i->numbers[0] = 1;
 
-    Bigint* result = init();
-    result->numbers = calloc(n->numbers[0], sizeof(unsigned int));
-    result->firstDigit = 0;
-    result->numbers[0] = 1;
-
-    for (;i->numbers[0] < n->numbers[0] && i->firstDigit < n->firstDigit; increment(i)) {
-        Bigint* diff = deepCopy(n);
-        if (diff == nullptr) {
+    if (check % 2 == 0) {
+        Bigint *result = init();
+        if (result == nullptr) {
             return nullptr;
         }
 
-        diff = substraction(diff, i);
-        int sign;
-        if (diff->numbers[0] == 1) {
-            if (diff->firstDigit % 2 == 0) {
-                sign = 1;
-            } else {
-                sign = -1;
-            }
-        } else {
-            if (diff->numbers[diff->numbers[0] - 1] % 2 == 0) {
-                sign = 1;
-            } else {
-                sign = -1;
-            }
-        }
-
-        Bigint* nFactorial = factorial(n);
+        result->firstDigit = 0;
+        result->numbers[0] = 1;
+        return result;
+    } else {
+        Bigint *nFactorial = factorial(multiplication_algorithm, n);
         if (nFactorial == nullptr) {
             return nullptr;
         }
-        nFactorial->firstDigit = nFactorial->firstDigit*sign;
 
-        result = summation(result, nFactorial);
+        nFactorial->firstDigit = nFactorial->firstDigit * (-1);
+        return nFactorial;
     }
-
-    return result;
 }
 
 /**
@@ -766,15 +765,16 @@ Bigint* toBase(unsigned int n) {
     }
 
     new->numbers = calloc(countNumberOfDigits(1, n) + 2, sizeof(unsigned int) * 1);
-    new->numbers[0] = 0;
+    new->numbers[0] = 1;
 
     unsigned int i = 1;
     while (n / BASE > 0) {
         new->numbers[0]++;
-        new->numbers[i] = n / BASE;
+        new->numbers[i] = n % BASE;
         i++;
         n = n / BASE;
     }
+
 
     new->numbers[i] = n % BASE;
     new->firstDigit = (int) new->numbers[new->numbers[0]];
@@ -786,27 +786,18 @@ Bigint* toBase(unsigned int n) {
 /**
  * It is the implementation of exponentiation in positive degree.
  */
-Bigint* positiveDegree(Bigint* number, Bigint* degree) {
+Bigint* positiveDegree(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* number, Bigint* degree) {
     if (number == nullptr || degree == nullptr) {
         return nullptr;
     }
 
-    Bigint* one = init();
-    if (one == nullptr) {
-        return nullptr;
-    }
-
-    one->firstDigit = 1;
-    realloc(one->numbers, sizeof(unsigned int));
-    one->numbers[0] = 1;
-
-    while (degree->numbers[0] > 1 && degree->firstDigit > 0) {
-        multiply(number, number);
+    while (degree->numbers[0] >= 1 && degree->firstDigit > 0) {
+        multiplication_algorithm(number, number);
         if (number == nullptr) {
             return nullptr;
         }
 
-        substraction(degree, one);
+        decrement(degree);
         if (degree == nullptr) {
             return nullptr;
         }
@@ -819,7 +810,7 @@ Bigint* positiveDegree(Bigint* number, Bigint* degree) {
  * Difficulty of algorithm is O(n^3).
  * Илья Сергеевич, не бейте сильно :D
  */
-Bigint* mod(Bigint* a, Bigint*b) {
+Bigint* mod(Bigint* multiplication_algorithm(Bigint*a, Bigint*b), Bigint* a, Bigint*b) {
     if (a == nullptr || b == nullptr) {
         return nullptr;
     }
@@ -827,28 +818,21 @@ Bigint* mod(Bigint* a, Bigint*b) {
     Bigint* iter1 = deepCopy(b);
     Bigint* iter2 = deepCopy(b);
     Bigint* iter3 = deepCopy(b);
-    Bigint* one = init();
-    if (one == nullptr || iter1 == nullptr) {
-        delete(one);
+    if (iter1 == nullptr || iter2 == nullptr || iter3 == nullptr) {
         delete(iter1);
         delete(iter2);
         delete(iter3);
         return nullptr;
     }
 
-    one->firstDigit = 1;
-    realloc(one->numbers, sizeof(unsigned int));
-    one->numbers[0] = 1;
-
-    while (a->numbers[0] >= multiply(iter1, iter1)->numbers[0] && a->firstDigit > multiply(iter2, iter2)->firstDigit) {
+    while (a->numbers[0] >= multiplication_algorithm(iter1, iter1)->numbers[0] && a->firstDigit > multiplication_algorithm(iter2, iter2)->firstDigit) {
         if (iter1 == nullptr || iter2 == nullptr) {
             return nullptr;
         }
 
-        multiply(iter3, iter3);
+        multiplication_algorithm(iter3, iter3);
     }
 
-    delete(one);
     delete(iter1);
     delete(iter2);
     delete(iter3);
@@ -858,7 +842,7 @@ Bigint* mod(Bigint* a, Bigint*b) {
 /**
  * Т3 номер 3, п.b
  */
-Bigint* count(Bigint* n) {
+Bigint* count(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* n) {
     if (n == nullptr) {
         return nullptr;
     }
@@ -871,17 +855,17 @@ Bigint* count(Bigint* n) {
         return nullptr;
     }
 
-    positiveDegree(number, degree);
+    positiveDegree(multiplication_algorithm, number, degree);
     if (number == nullptr) {
         return nullptr;
     }
 
-    positiveDegree(two, n);
+    positiveDegree(multiplication_algorithm, two, n);
     if (two == nullptr) {
         return nullptr;
     }
 
-    return mod(number, two);
+    return mod(multiplication_algorithm, number, two);
 }
 
 /**
@@ -963,6 +947,61 @@ int main(void) {
 
     delete(a);
     delete(b);
+
+    Bigint* c = init();
+    if (c == nullptr) {
+        return 1;
+    }
+
+    unsigned int* tmp = realloc(c->numbers, sizeof(unsigned int) * 2);
+    if (tmp == nullptr) {
+        delete(c);
+        return 1;
+    }
+
+    c->numbers = tmp;
+    c->numbers[0] = 1;
+    c->numbers[1] = 0;
+    c->firstDigit = 7;
+
+    Bigint* cCopy1 = deepCopy(c);
+    clock_t startDefault = clock();
+    Bigint* afByDefault = af(multiply, cCopy1);
+    clock_t endDefault = clock();
+    printBigint(afByDefault);
+    printf("%ld\n", endDefault - startDefault);
+    delete( afByDefault);
+    delete(cCopy1);
+
+    Bigint* cCopy2 = deepCopy(c);
+    clock_t startKaratsuba = clock();
+    Bigint* afByKaratsuba = af(karatsuba, cCopy2);
+    clock_t endKaratsuba = clock();
+    printBigint(afByKaratsuba);
+    printf("%ld\n", endKaratsuba - startKaratsuba);
+    delete(afByKaratsuba);
+    delete(cCopy2);
+
+    c->firstDigit = 12;
+    Bigint* cCopy3 = deepCopy(c);
+    clock_t startCountByDefault = clock();
+    Bigint* countDefault = count(multiply, cCopy3);
+    clock_t endCountByDefault = clock();
+    printBigint(countDefault);
+    printf("%ld\n", endCountByDefault - startCountByDefault);
+    delete(cCopy3);
+    delete(countDefault);
+
+    Bigint* cCopy4 = deepCopy(c);
+    clock_t startCountByKaratsuba = clock();
+    Bigint* countKaratsuba = count(karatsuba, cCopy4);
+    clock_t endCountByKaratsuba = clock();
+    printBigint(countKaratsuba);
+    printf("%ld\n", endCountByKaratsuba - startCountByKaratsuba);
+    delete(cCopy4);
+    delete(countKaratsuba);
+
+    delete(c);
 
     return 0;
 }
