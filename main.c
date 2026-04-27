@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define BASE (256 << sizeof(int))
+#define BASE (1ULL << sizeof(unsigned int) * 8)
 
 typedef struct Bigint {
     int firstDigit;
@@ -41,6 +41,8 @@ void delete(Bigint* number) {
 
 /**
  * Rough input in BASE number system with little endian (LE) format.
+ *
+ * Actually, I don't use it in my program due to lack of necessity to do that.
  */
 int inputBigint(Bigint* number) {
     if (number == nullptr) {
@@ -139,7 +141,9 @@ Bigint* deepCopy(Bigint* n);
 
 /**
  * Summation of two Bigint numbers.
- * @param a - a Bigint number, which becomes a return value.
+ * @param a Bigint number, which becomes a return value.
+ * @param b Bigint number
+ * @return a+b
  */
 Bigint* summation(Bigint* a, Bigint* b) {
     if (a == nullptr || b == nullptr) {
@@ -189,10 +193,11 @@ Bigint* summation(Bigint* a, Bigint* b) {
         unsigned int digit1 = a->numbers[i];
         unsigned int digit2 = b->numbers[i];
 
+        unsigned int digit1_initial = digit1;
         digit1 = digit1 + digit2 + perenos;
         a->numbers[i] = digit1 % BASE;
 
-        if (digit1 >= BASE) {
+        if (digit1_initial >= digit1) {
             perenos = digit1 / BASE;
         } else {
             perenos = 0;
@@ -214,7 +219,7 @@ Bigint* summation(Bigint* a, Bigint* b) {
 
 /**
  * Substraction of two Bigint numbers.
- * @param a - a Bigint number, which becomes a return value.
+ * @param a Bigint number, which becomes a return value.
  */
 Bigint* substraction(Bigint* a, Bigint* b) {
     if (a == nullptr || b == nullptr) {
@@ -230,11 +235,25 @@ Bigint* substraction(Bigint* a, Bigint* b) {
     }
 
     if (a->firstDigit < 0 && b->firstDigit <= 0) {
+        // -a - (-b) = b - a
         a->firstDigit = a->firstDigit * (-1);
         b->firstDigit = b->firstDigit * (-1);
-        return substraction(b, a);
+
+        Bigint* newA = substraction(deepCopy(b), a);
+        if (newA == nullptr) {
+            return nullptr;
+        }
+
+        a->firstDigit = newA->firstDigit;
+        free(a->numbers);
+        a->numbers = newA->numbers;
+        newA->numbers = nullptr;
+        delete(newA);
+        return a;
     } else if ((a->firstDigit >= 0 && b->firstDigit < 0) || (a->firstDigit <= 0 && b->firstDigit > 0)) {
-        b->firstDigit = b->firstDigit * (-1);
+        // a - (-b) = a + b
+        // -a - b = (a + b) * (-1). Sign changing is executed in summation function
+        b->firstDigit = -b->firstDigit;
         return summation(a, b);
     }
 
@@ -244,15 +263,33 @@ Bigint* substraction(Bigint* a, Bigint* b) {
         return nullptr;
     }
 
-    long long borrow = 0;
+    // Compare magnitudes from most significant digit to find which is larger
+    int cmp = 0;
+    if (a->numbers[a->numbers[0]] > b->numbers[b->numbers[0]]) {
+        cmp = 1;
+    } else if (a->numbers[a->numbers[0]] < b->numbers[b->numbers[0]]) {
+        cmp = -1;
+    } else {
+        a->firstDigit = 0;
+        a->numbers[0] = 1;
+        return a;
+    }
 
+    // a < b
+    if (cmp == -1) {
+        unsigned int* tmp = a->numbers;
+        a->numbers = b->numbers;
+        b->numbers = tmp;
+    }
+
+    long long borrow = 0;
     for (unsigned int i = 1; i <= max; i++) {
-        long long digit1 = (long long) a->numbers[i];
-        long long digit2 = (long long) b->numbers[i];
+        long long digit1 = a->numbers[i];
+        long long digit2 = b->numbers[i];
 
         long long diff = digit1 - digit2 - borrow;
 
-        if (diff < 0 && i != max) {
+        if (diff < 0) {
             diff += BASE;
             borrow = 1;
         } else {
@@ -262,12 +299,17 @@ Bigint* substraction(Bigint* a, Bigint* b) {
         a->numbers[i] = (unsigned int) diff;
     }
 
-    while (a->numbers[max] == 0) {
+    while (max > 1 && a->numbers[max] == 0) {
         max--;
     }
 
+    a->numbers[0] = max;
     a->firstDigit = (int) a->numbers[max];
     a->numbers[max] = 0;
+
+    if (cmp == -1) {
+        a->firstDigit = -a->firstDigit;
+    }
 
     return a;
 }
@@ -276,55 +318,58 @@ Bigint* substraction(Bigint* a, Bigint* b) {
  * @return The least significant half of an argument.
  * Списал с семинара :D
  */
-int lowWord(int value) {
-    return value &((1 << sizeof(int) << 2) - 1);
+unsigned int lowWord(unsigned int value) {
+    return value & ((1 << (sizeof(unsigned int) << 2)) - 1);
 }
 
 /**
  * @return The most significant half of an argument.
  * Это тоже списал :D
  */
-int highWord(int value) {
-    return (value >> (sizeof(value) << 2) & (1 << ((sizeof(value) << 2) - 1)));
+unsigned int highWord(unsigned int value) {
+    return (value >> (sizeof(unsigned int) << 2)) & ((1 << (sizeof(unsigned int) << 2)) - 1);
 }
 
 /**
  * It multiplies two unsigned int numbers and write the result in low and high part.
- *
- * Due to number system equal 2^12 this function is deprecated since overflowing doesnt happen at all.
- * Example: 2^12 * 2^12 = 2^24 < 2^32 - 1 (maximum number written in int)
+ * Splits each operand into two 16-bit halves, then combines four 16x16-bit products.
+ * a*b = p3*2^32 + (p1+p2)*2^16 + p0
  */
-void mulWord(unsigned int a, unsigned int b, unsigned int* low,unsigned int* high) {
-    unsigned int a0 = lowWord((int) a);
-    unsigned int a1 = highWord((int) a);
-    unsigned int b0 = lowWord((int) b);
-    unsigned int b1 = highWord((int) b);
+void mulWord(unsigned int a, unsigned int b, unsigned int* low, unsigned int* high) {
+    unsigned int a0 = lowWord(a);
+    unsigned int a1 = highWord(a);
+    unsigned int b0 = lowWord(b);
+    unsigned int b1 = highWord(b);
 
     unsigned int p0 = a0 * b0;
     unsigned int p1 = a0 * b1;
     unsigned int p2 = a1 * b0;
     unsigned int p3 = a1 * b1;
 
-    /**
-     * 1214 * 1618
-     * 14*18 - low words
-     * 18*12 - mid words
-     * 12*16 - mid words
-     * 12*16 - high words
-     *
-     * a*b = p3·2^(2*sizeof(int)<<2) + (p1+p2)·2^sizeof(int)<<2 + p0
-     */
-
     unsigned int middle = p1 + p2;
     unsigned int carryMid = (middle < p1);
 
-    unsigned int lowPart = p0 + (middle << (sizeof(int) << 2));
+    unsigned int lowPart = p0 + (middle << (sizeof(unsigned int) << 2));
     unsigned int carryLow = (lowPart < p0);
 
-    unsigned int highPart = p3 + (middle >> (sizeof(int) << 2)) + carryMid + carryLow;
+    // carryMid represents an overflow of 2^32 in middle; its contribution to high is 2^32/2^16 = 2^16
+    unsigned int highPart = p3 + (middle >> (sizeof(unsigned int) << 2))
+    + (carryMid << (sizeof(unsigned int) << 2)) + carryLow;
 
     *low = lowPart;
     *high = highPart;
+}
+
+void normalizeBigint(Bigint* a) {
+    if (a == nullptr || a->numbers == nullptr) {
+        return;
+    }
+
+    while (a->firstDigit == 0 && a->numbers[0] > 1) {
+        a->numbers[0]--;
+        a->firstDigit = (int) a->numbers[a->numbers[0]];
+        a->numbers[a->numbers[0]] = 0;
+    }
 }
 
 /**
@@ -343,7 +388,6 @@ Bigint* multiply(Bigint* a, Bigint* b) {
     /**
      * We assume that a and b are normalized numbers written in BASE number system.
      */
-
     if (a->firstDigit == 0) {
         return a;
     } else if (b->firstDigit == 0) {
@@ -361,13 +405,10 @@ Bigint* multiply(Bigint* a, Bigint* b) {
         return nullptr;
     }
 
-    unsigned int *res = calloc(2 * max + 2, sizeof(unsigned int));
+    unsigned int *res = calloc(2 * max + 4, sizeof(unsigned int));
     if (res == nullptr) {
         return nullptr;
     }
-
-    res[0] = max;
-    unsigned int countRealQuantityOfDigits = 0;
 
     for (unsigned int j = 1; j <= max; j++) {
         unsigned int bj = b->numbers[j];
@@ -375,64 +416,39 @@ Bigint* multiply(Bigint* a, Bigint* b) {
 
         for (unsigned int i = 1; i <= max; i++) {
             unsigned int ai = a->numbers[i];
+            unsigned int k = i + j - 1;
 
-            /**
-             * We assume that overflowing always doesn't happen due to number system (BASE = 2^12).
-             */
+            unsigned int mulLow, mulHigh;
+            mulWord(ai, bj, &mulLow, &mulHigh);
 
-            unsigned int mult = ai * bj + perenos;
-            unsigned int k = i + j - 1; // shift to the left in BE multiplication
-            perenos = 0;
+            unsigned int tmp = mulLow + perenos;
+            mulHigh += (tmp < mulLow);
 
-            res[k] += mult % BASE;
-            if (res[k] >= BASE) {
-                res[k] = res[k] % BASE;
-                perenos += res[k] / BASE;
-            }
+            unsigned int old = res[k];
+            res[k] += tmp;
+            mulHigh += (res[k] < old);
 
-            perenos += mult / BASE;
+            perenos = mulHigh;
         }
 
-        unsigned int lastK = max + j - 1;
-        unsigned int count = 1;
+        unsigned int pos = max + j;
         while (perenos != 0) {
-            res[lastK + count] += perenos;
-
-            if (res[lastK + count] >= BASE) {
-                perenos = res[lastK + count] / BASE;
-                res[lastK + count] = res[lastK + count] % BASE;
-            } else {
-                perenos = 0;
-
-                if (countRealQuantityOfDigits < lastK + count) {
-                    countRealQuantityOfDigits = lastK + count;
-                } else {
-                    countRealQuantityOfDigits = countRealQuantityOfDigits;
-                }
-            }
-
-            count++;
+            unsigned int old = res[pos];
+            res[pos] += perenos;
+            perenos = (res[pos] < old) ? 1 : 0;
+            pos++;
         }
+    }
 
-        if (countRealQuantityOfDigits < lastK) {
-            countRealQuantityOfDigits = lastK;
-        } else {
-            countRealQuantityOfDigits = countRealQuantityOfDigits;
-        }
+    unsigned int countRealQuantityOfDigits = 2 * max;
+    while (countRealQuantityOfDigits > 1 && res[countRealQuantityOfDigits] == 0) {
+        countRealQuantityOfDigits--;
     }
 
     free(a->numbers);
     a->numbers = res;
-
-    if (a->numbers[0] > 1) {
-        while (a->numbers[0] > 1 && a->firstDigit == 0) {
-            a->firstDigit = (int) a->numbers[a->numbers[0]];
-            a->numbers[0]--;
-        }
-    }
-
     a->numbers[0] = countRealQuantityOfDigits;
-    a->firstDigit = (int) a->numbers[a->numbers[0]];
+    a->firstDigit = (int) a->numbers[countRealQuantityOfDigits];
 
     if (sign < 0) {
         a->firstDigit = a->firstDigit * (-1);
@@ -474,7 +490,6 @@ void splitOnHalf(Bigint* x, Bigint* highNumber, Bigint* smallNumber) {
      * Due to Little Endian (LE) the first n/2 numbers are smallest digits in a bigint,
      * and the last n/2 numbers are biggest.
      */
-
     unsigned int l = 1, h = 1;
     for (unsigned int i = 1; i <= n; i++) {
         if (i < n/2) {
@@ -532,8 +547,9 @@ Bigint* karatsuba(Bigint* a, Bigint* b) {
     }
 
     unsigned int n = a->numbers[0] > b->numbers[0] ? a->numbers[0] : b->numbers[0];
+    unsigned int m = a->numbers[0] < b->numbers[0] ? a->numbers[0] : b->numbers[0];
 
-    if (n < 2) {
+    if (n < 2 || m < 2) {
         return multiply(a, b);
     }
 
@@ -601,6 +617,7 @@ Bigint* karatsuba(Bigint* a, Bigint* b) {
     delete(res2);
     delete(result);
 
+    normalizeBigint(a);
     return a;
 }
 
@@ -617,7 +634,7 @@ void increment(Bigint* n) {
         return;
     }
 
-    i->numbers = calloc(1, sizeof(unsigned int));
+    i->numbers = calloc(2, sizeof(unsigned int));
     i->firstDigit= 1;
     i->numbers[0] = 1;
 
@@ -638,7 +655,7 @@ void decrement(Bigint* n) {
         return;
     }
 
-    i->numbers = calloc(1, sizeof(unsigned int));
+    i->numbers = calloc(2, sizeof(unsigned int));
     i->firstDigit= 1;
     i->numbers[0] = 1;
 
@@ -670,10 +687,39 @@ Bigint* deepCopy(Bigint* n) {
 }
 
 /**
+ * Compares two Bigint numbers by module.
+ * @return -1 if |a| < |b|, 0 if |a| == |b|, 1 if |a| > |b|
+ */
+int compareBigint(Bigint* a, Bigint* b) {
+    if (a->numbers[0] != b->numbers[0]) {
+        return a->numbers[0] > b->numbers[0] ? 1 : -1;
+    }
+
+    unsigned int am = (unsigned int)(a->firstDigit >= 0 ? a->firstDigit : -a->firstDigit);
+    unsigned int bm = (unsigned int)(b->firstDigit >= 0 ? b->firstDigit : -b->firstDigit);
+
+    if (am != bm) {
+        return am > bm ? 1 : -1;
+    }
+
+    for (int i = (int) a->numbers[0] - 1; i >= 1; i--) {
+        if (a->numbers[i] != b->numbers[i]) {
+            return a->numbers[i] > b->numbers[i] ? 1 : -1;
+        }
+    }
+
+    return 0;
+}
+
+/**
  * Factorial function for Bigint numbers.
  */
 Bigint* factorial(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* n) {
     if (n == nullptr) {
+        return nullptr;
+    }
+
+    if (n->firstDigit < 0) {
         return nullptr;
     }
 
@@ -682,25 +728,23 @@ Bigint* factorial(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint
         return nullptr;
     }
 
-    if (n->firstDigit < 0) {
-        return nullptr;
-    }
-
     i->firstDigit = 1;
-    i->numbers = calloc(1, sizeof(unsigned int));
+    i->numbers = calloc(2, sizeof(unsigned int));
     i->numbers[0] = 1;
 
     Bigint* result = deepCopy(i);
     if (result == nullptr) {
+        delete(i);
         return nullptr;
     }
 
-    for (; i->numbers[0] <= n->numbers[0] && i->firstDigit <= n->firstDigit; increment(i)) {
-        result = multiplication_algorithm(result, i);
+    for (; compareBigint(i, n) <= 0; increment(i)) {
+        Bigint* iCopy = deepCopy(i);
+        result = multiplication_algorithm(result, iCopy);
+        delete(iCopy);
     }
 
     delete(i);
-
     return result;
 }
 
@@ -733,13 +777,7 @@ Bigint* af(Bigint* multiplication_algorithm(Bigint* a, Bigint*b), Bigint* n) {
         result->numbers[0] = 1;
         return result;
     } else {
-        Bigint *nFactorial = factorial(multiplication_algorithm, n);
-        if (nFactorial == nullptr) {
-            return nullptr;
-        }
-
-        nFactorial->firstDigit = nFactorial->firstDigit * (-1);
-        return nFactorial;
+        return factorial(multiplication_algorithm, n);
     }
 }
 
@@ -785,87 +823,88 @@ Bigint* toBase(unsigned int n) {
 
 /**
  * It is the implementation of exponentiation in positive degree.
+ * Returns base^degree as a new Bigint. Destroys degree (decrements to 0).
  */
-Bigint* positiveDegree(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* number, Bigint* degree) {
-    if (number == nullptr || degree == nullptr) {
+Bigint* positiveDegree(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* base, Bigint* degree) {
+    if (base == nullptr || degree == nullptr) {
         return nullptr;
     }
 
-    while (degree->numbers[0] >= 1 && degree->firstDigit > 0) {
-        multiplication_algorithm(number, number);
-        if (number == nullptr) {
-            return nullptr;
-        }
-
-        decrement(degree);
-        if (degree == nullptr) {
-            return nullptr;
-        }
+    Bigint* result = toBase(1);
+    if (result == nullptr) {
+        return nullptr;
     }
 
-    return number;
+    while (degree->firstDigit > 0) {
+        Bigint* baseCopy = deepCopy(base);
+        result = multiplication_algorithm(result, baseCopy);
+        delete(baseCopy);
+        if (result == nullptr) {
+            return nullptr;
+        }
+        decrement(degree);
+    }
+
+    return result;
 }
 
 /**
- * Difficulty of algorithm is O(n^3).
- * Илья Сергеевич, не бейте сильно :D
+ * Computes a mod b using repeated subtraction. O(a/b) iterations.
  */
-Bigint* mod(Bigint* multiplication_algorithm(Bigint*a, Bigint*b), Bigint* a, Bigint*b) {
+Bigint* mod(Bigint* a, Bigint*b) {
     if (a == nullptr || b == nullptr) {
         return nullptr;
     }
 
-    Bigint* iter1 = deepCopy(b);
-    Bigint* iter2 = deepCopy(b);
-    Bigint* iter3 = deepCopy(b);
-    if (iter1 == nullptr || iter2 == nullptr || iter3 == nullptr) {
-        delete(iter1);
-        delete(iter2);
-        delete(iter3);
+    Bigint* result = deepCopy(a);
+    if (result == nullptr) {
         return nullptr;
     }
 
-    while (a->numbers[0] >= multiplication_algorithm(iter1, iter1)->numbers[0] && a->firstDigit > multiplication_algorithm(iter2, iter2)->firstDigit) {
-        if (iter1 == nullptr || iter2 == nullptr) {
+    while (compareBigint(result, b) >= 0) {
+        Bigint* bCopy = deepCopy(b);
+        result = substraction(result, bCopy);
+        delete(bCopy);
+        if (result == nullptr) {
             return nullptr;
         }
-
-        multiplication_algorithm(iter3, iter3);
     }
 
-    delete(iter1);
-    delete(iter2);
-    delete(iter3);
-    return substraction(a, iter3);
+    return result;
 }
 
 /**
- * Т3 номер 3, п.b
+ * Т3 номер 3, п.b — computes 1152494183 mod 2^n
  */
 Bigint* count(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* n) {
     if (n == nullptr) {
         return nullptr;
     }
 
-    Bigint* number = toBase(115249);
-    Bigint* degree = toBase(4183);
+    Bigint* number = toBase(1152494183u);
     Bigint* two = toBase(2);
+    Bigint* nCopy = deepCopy(n);
 
-    if (number == nullptr || degree == nullptr || two == nullptr) {
+    if (number == nullptr || two == nullptr || nCopy == nullptr) {
+        delete(number);
+        delete(two);
+        delete(nCopy);
         return nullptr;
     }
 
-    positiveDegree(multiplication_algorithm, number, degree);
-    if (number == nullptr) {
+    Bigint* modulus = positiveDegree(multiplication_algorithm, two, nCopy);
+    delete(two);
+    delete(nCopy);
+
+    if (modulus == nullptr) {
+        delete(number);
         return nullptr;
     }
 
-    positiveDegree(multiplication_algorithm, two, n);
-    if (two == nullptr) {
-        return nullptr;
-    }
-
-    return mod(multiplication_algorithm, number, two);
+    Bigint* result = mod(number, modulus);
+    delete(number);
+    delete(modulus);
+    return result;
 }
 
 /**
@@ -888,26 +927,24 @@ int main(void) {
     /**
      * Generating test cases for laboratory work.
      */
-
     Bigint* a = init();
     Bigint* b = init();
     if (a == nullptr || b == nullptr) {
         return 1;
     }
 
-    realloc(a->numbers, sizeof(unsigned int) * 4);
+    realloc(a->numbers, sizeof(unsigned int) * 3);
     realloc(b->numbers, sizeof(unsigned int) * 3);
 
-    a->numbers[0] = 4;
-    a->numbers[1] = 1293;
-    a->numbers[2] = 3405;
-    a->numbers[3] = 10;
-    a->firstDigit = 120;
+    a->numbers[0] = 3;
+    a->numbers[1] = 100;
+    a->numbers[2] = 3000;
+    a->firstDigit = 13;
 
     b->numbers[0] = 3;
-    b->numbers[1] = 100;
+    b->numbers[1] = 1293;
     b->numbers[2] = 4000;
-    b->firstDigit = 13;
+    b->firstDigit = 120;
 
     Bigint* aCopy = deepCopy(a);
     Bigint* mySubstraction = substraction(deepCopy(b), aCopy);
@@ -924,7 +961,6 @@ int main(void) {
     /**
      * For checking multiplication and Karatsuba algorithm more trivial values have been set.
      */
-
     a->firstDigit = 4000;
     a->numbers[0] = 2;
     a->numbers[1] = 10;
@@ -941,67 +977,98 @@ int main(void) {
 
     Bigint* bCopy2 = deepCopy(b);
     Bigint* myKaratsuba = karatsuba(deepCopy(a), bCopy2);
-    printBigint(myKaratsuba);
+    printBigint(myKaratsuba); // true
     delete(bCopy2);
     delete(myKaratsuba);
 
     delete(a);
     delete(b);
 
-    Bigint* c = init();
-    if (c == nullptr) {
+    Bigint* cAf = init();
+    if (cAf == nullptr) {
         return 1;
     }
+    cAf->numbers[0] = 1;
+    cAf->firstDigit = 151;
 
-    unsigned int* tmp = realloc(c->numbers, sizeof(unsigned int) * 2);
-    if (tmp == nullptr) {
-        delete(c);
-        return 1;
-    }
-
-    c->numbers = tmp;
-    c->numbers[0] = 1;
-    c->numbers[1] = 0;
-    c->firstDigit = 7;
-
-    Bigint* cCopy1 = deepCopy(c);
+    Bigint* cCopy1 = deepCopy(cAf);
     clock_t startDefault = clock();
     Bigint* afByDefault = af(multiply, cCopy1);
     clock_t endDefault = clock();
     printBigint(afByDefault);
-    printf("%ld\n", endDefault - startDefault);
-    delete( afByDefault);
+    printf("af with multiply for small values:  %.3f s\n", (double) (endDefault - startDefault) / CLOCKS_PER_SEC);
+    delete(afByDefault);
     delete(cCopy1);
 
-    Bigint* cCopy2 = deepCopy(c);
+    Bigint* cCopy2 = deepCopy(cAf);
     clock_t startKaratsuba = clock();
     Bigint* afByKaratsuba = af(karatsuba, cCopy2);
     clock_t endKaratsuba = clock();
     printBigint(afByKaratsuba);
-    printf("%ld\n", endKaratsuba - startKaratsuba);
+    printf("af with karatsuba for small values: %.3f s\n", (double) (endKaratsuba - startKaratsuba) / CLOCKS_PER_SEC);
     delete(afByKaratsuba);
     delete(cCopy2);
+    delete(cAf);
 
-    c->firstDigit = 12;
-    Bigint* cCopy3 = deepCopy(c);
+    Bigint* bigC = init();
+    if (bigC == nullptr) {
+        return 1;
+    }
+    bigC->numbers[0] = 1;
+    bigC->firstDigit = 501;
+
+    Bigint* cCopy3 = deepCopy(bigC);
+    clock_t startBigDefault = clock();
+    Bigint* bigAfByDefault = af(multiply, cCopy3);
+    clock_t bigEndDefault = clock();
+    printf("af with multiply for big values:  %.9f s\n", (double) (bigEndDefault - startBigDefault) / CLOCKS_PER_SEC);
+    delete(bigAfByDefault);
+    delete(cCopy3);
+
+    Bigint* cCopy4 = deepCopy(bigC);
+    clock_t startBigKaratsuba = clock();
+    Bigint* bigAfByKaratsuba = af(karatsuba, cCopy4);
+    clock_t bigEndKaratsuba = clock();
+    printf("af with karatsuba for big values: %.9f s\n", (double) (bigEndKaratsuba - startBigKaratsuba) / CLOCKS_PER_SEC);
+    delete(bigAfByKaratsuba);
+    delete(cCopy4);
+    delete(bigC);
+
+    Bigint* cCount = init();
+    if (cCount == nullptr) {
+        return 1;
+    }
+    cCount->numbers[0] = 1;
+    cCount->firstDigit = 30;
+
+    int reps = 20000;
+
     clock_t startCountByDefault = clock();
-    Bigint* countDefault = count(multiply, cCopy3);
+    Bigint* countDefault = nullptr;
+    for (int k = 0; k < reps; k++) {
+        Bigint* cCopy5 = deepCopy(cCount);
+        delete(countDefault);
+        countDefault = count(multiply, cCopy5);
+        delete(cCopy5);
+    }
     clock_t endCountByDefault = clock();
     printBigint(countDefault);
-    printf("%ld\n", endCountByDefault - startCountByDefault);
-    delete(cCopy3);
+    printf("count with multiply  (%d reps): %.3f s\n", reps, (double)(endCountByDefault - startCountByDefault) / CLOCKS_PER_SEC);
     delete(countDefault);
 
-    Bigint* cCopy4 = deepCopy(c);
     clock_t startCountByKaratsuba = clock();
-    Bigint* countKaratsuba = count(karatsuba, cCopy4);
+    Bigint* countKaratsuba = nullptr;
+    for (int k = 0; k < reps; k++) {
+        Bigint* cCopy6 = deepCopy(cCount);
+        delete(countKaratsuba);
+        countKaratsuba = count(karatsuba, cCopy6);
+        delete(cCopy6);
+    }
     clock_t endCountByKaratsuba = clock();
     printBigint(countKaratsuba);
-    printf("%ld\n", endCountByKaratsuba - startCountByKaratsuba);
-    delete(cCopy4);
+    printf("count with karatsuba (%d reps): %.3f s\n", reps, (double)(endCountByKaratsuba - startCountByKaratsuba) / CLOCKS_PER_SEC);
     delete(countKaratsuba);
-
-    delete(c);
+    delete(cCount);
 
     return 0;
 }
