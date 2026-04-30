@@ -830,30 +830,127 @@ Bigint* positiveDegree(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), B
         return nullptr;
     }
 
-    Bigint* result = toBase(1);
+    Bigint* result = init();
     if (result == nullptr) {
         return nullptr;
     }
 
-    while (degree->firstDigit > 0) {
-        Bigint* baseCopy = deepCopy(base);
-        result = multiplication_algorithm(result, baseCopy);
-        delete(baseCopy);
+    Bigint* degreeCopy = deepCopy(degree);
+
+    Bigint* baseCopy1 = deepCopy(base);
+    while (degreeCopy->firstDigit > 1) {
+        Bigint* baseCopy2 = deepCopy(base);
+        multiplication_algorithm(baseCopy1, baseCopy2);
+        result = deepCopy(baseCopy1);
+        delete(baseCopy1);
+        delete(baseCopy2);
         if (result == nullptr) {
             return nullptr;
         }
-        decrement(degree);
+        decrement(degreeCopy);
+        baseCopy1 = deepCopy(result);
     }
+
+    delete(baseCopy1);
+    delete(degreeCopy);
+    return result;
+}
+
+/**
+ * Returns n if a == 2^n (n >= 0), otherwise returns -1.
+ */
+int getPow2Exponent(Bigint* a) {
+    if (a == nullptr || a->firstDigit <= 0) {
+        return -1;
+    }
+
+    // Checks whether a is the 2^n or not.
+    unsigned int N = a->numbers[0];
+    for (unsigned int i = 1; i < N; i++) {
+        if (a->numbers[i] != 0) {
+            return -1;
+        }
+    }
+
+    unsigned int top = (unsigned int) a->firstDigit;
+    if (top == 0 || (top & (top - 1)) != 0) {
+        return -1;
+    }
+
+    int bit = 0;
+    while (!((top >> bit) & 1)) {
+        bit++;
+    }
+
+    return bit + 32 * (int)(N - 1);
+}
+
+/**
+ * Computes a mod 2^n using bit masking.
+ */
+Bigint* modPow2(Bigint* a, unsigned int n) {
+    if (a == nullptr) {
+        return nullptr;
+    }
+
+    if (n == 0) {
+        Bigint* zero = init();
+        if (zero == nullptr) {
+            return nullptr;
+        }
+
+        zero->firstDigit = 0;
+        zero->numbers[0] = 1;
+        return zero;
+    }
+
+    Bigint* result = deepCopy(a);
+    unsigned int N = result->numbers[0];
+    result->numbers[N] = (unsigned int) result->firstDigit;
+
+    unsigned int full = n / 32;
+    unsigned int rem  = n % 32;
+    unsigned int keep = full + (rem > 0 ? 1 : 0);
+
+    if (keep > N) {
+        result->numbers[N] = 0;
+        return result;
+    }
+
+    if (rem > 0) {
+        result->numbers[keep] &= (1 << rem) - 1;
+    }
+
+    // Отсекаются все левые биты, меньшие n
+    for (unsigned int i = keep + 1; i <= N; i++) {
+        result->numbers[i] = 0;
+    }
+
+    unsigned int new_N = keep;
+    while (new_N > 1 && result->numbers[new_N] == 0) {
+        new_N--;
+    }
+
+    result->numbers[0] = new_N;
+    result->firstDigit = (int) result->numbers[new_N];
+    result->numbers[new_N] = 0;
 
     return result;
 }
 
 /**
- * Computes a mod b using repeated subtraction. O(a/b) iterations.
+ * Computes a mod b.
+ * Fast O(N) path when b is a power of 2 (uses bit masking).
+ * Falls back to repeated subtraction otherwise.
  */
-Bigint* mod(Bigint* a, Bigint*b) {
+Bigint* mod(Bigint* a, Bigint* b) {
     if (a == nullptr || b == nullptr) {
         return nullptr;
+    }
+
+    int p = getPow2Exponent(b);
+    if (p >= 0) {
+        return modPow2(a, (unsigned int)p);
     }
 
     Bigint* result = deepCopy(a);
@@ -869,24 +966,22 @@ Bigint* mod(Bigint* a, Bigint*b) {
             return nullptr;
         }
     }
-
     return result;
 }
 
 /**
- * Т3 номер 3, п.b — computes 1152494183 mod 2^n
+ * Т3 номер 3, п.b — computes 115249^4183 mod 2^n
+ *
+ * Counts modulus of result of exponentiation repeatedly to make a number be beyond the modulus.
  */
 Bigint* count(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* n) {
     if (n == nullptr) {
         return nullptr;
     }
 
-    Bigint* number = toBase(1152494183u);
-    Bigint* two = toBase(2);
+    Bigint* two   = toBase(2);
     Bigint* nCopy = deepCopy(n);
-
-    if (number == nullptr || two == nullptr || nCopy == nullptr) {
-        delete(number);
+    if (two == nullptr || nCopy == nullptr) {
         delete(two);
         delete(nCopy);
         return nullptr;
@@ -895,14 +990,55 @@ Bigint* count(Bigint* multiplication_algorithm(Bigint* a, Bigint* b), Bigint* n)
     Bigint* modulus = positiveDegree(multiplication_algorithm, two, nCopy);
     delete(two);
     delete(nCopy);
-
     if (modulus == nullptr) {
-        delete(number);
         return nullptr;
     }
 
-    Bigint* result = mod(number, modulus);
-    delete(number);
+    Bigint* result = toBase(1);
+    Bigint* base   = toBase(115249);
+    if (result == nullptr || base == nullptr) {
+        delete(modulus);
+        delete(result);
+        delete(base);
+        return nullptr;
+    }
+
+    unsigned int exp = 4183;
+    while (exp > 0) {
+        if (exp & 1) {
+            Bigint* baseCopy = deepCopy(base);
+            result = multiplication_algorithm(result, baseCopy);
+            Bigint* reduced = mod(result, modulus);
+
+            delete(baseCopy);
+            delete(result);
+
+            result = reduced;
+            if (result == nullptr) {
+                delete(base);
+                delete(modulus);
+                return nullptr;
+            }
+        }
+        exp >>= 1;
+        if (exp > 0) {
+            Bigint* baseCopy = deepCopy(base);
+            base = multiplication_algorithm(base, baseCopy);
+            Bigint* reduced = mod(base, modulus);
+
+            delete(baseCopy);
+            delete(base);
+
+            base = reduced;
+            if (base == nullptr) {
+                delete(result);
+                delete(modulus);
+                return nullptr;
+            }
+        }
+    }
+
+    delete(base);
     delete(modulus);
     return result;
 }
